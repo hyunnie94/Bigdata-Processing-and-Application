@@ -1,0 +1,94 @@
+pragma solidity ^0.4.24;
+
+contract Homework {
+    struct Product {           //상품
+        string brandName;     //브랜드명
+        uint date;  //연식
+        uint price; //가격
+        string sellerPhone;    // 판매자 번호
+        address sellerAddress;  // 판매자(msg.sender)의 주소
+        bool sellingState;   // 판매 상태
+        string image_hash;   // ipfs를 이용하기 위한 해시값 string 변수
+    }
+    
+    address private owner;        // owner (개발자 객체)
+    Product[] private productList;  // 상품 구조체로 이루어진 상품배열
+    
+    modifier onlyOwner {  // 개발자 (서비스 배포자)인지 확인
+        require(msg.sender == owner);  // if문과 비슷한 역할을 하며 require로 실행. 오류를 반환한다.
+        _;  // 이 부분에 추가로 함수가 오게된다(변경자 : modifier를 이용했을 경우)
+    }
+    
+    constructor() public { // 생성자
+        owner = msg.sender;  // 처음 배포될 때는 msg.sender를 owner로 초기화한다
+    }
+    
+    // 상품(브랜드명, 연식, 가격, 판매상태, 이미지 해시값)을 추가하는 함수
+    // 실제로는 msg.sender의 address도 값을 넣어준다
+    function addProduct(string _brandName, uint _date, uint _price, string _sellerPhone, string _image_hash) public {
+        productList.push(Product(_brandName, _date, _price, _sellerPhone, msg.sender, true, _image_hash));
+    }
+    
+    // 상품 구매 함수들
+    
+    // CA(ContractAddress) 즉 스마트 컨트랙트에게 value를 주는 함수
+    // payable이 붙어서 transaction이 발생하고 gas fee도 발생한다
+    // 반환이라는 개념을 살리기 위해 꼭 필요함
+    function sendToCA(uint _indexOfProduct) public payable {
+        require( productList[_indexOfProduct].sellingState == true );
+        require( productList[_indexOfProduct].sellerAddress != msg.sender);
+    }
+    
+    // 구매 실패 : 차액이 0보다 작을 때 (가격보다 더 적은 value가 들어왔을 때)
+    function failBuy() public payable {
+        msg.sender.transfer(address(this).balance);
+    }
+    // 구매 성공 : 차액이 0보다 클때(value값이 price보다 높을 때)
+    //이더리움의 기본 단위는 wei 또는 gwei 이며 10^18이다.
+    function sendToBuyer(uint _indexOfProduct) public payable {
+        uint _balance = address(this).balance - (productList[_indexOfProduct].price * 1000000000000000000);
+        // 차액을 구하는 함수(balance는 wei형태이다)
+        msg.sender.transfer(_balance);
+    }
+    
+    // 구매성공 : 0이거나 0보다 클 때 (value값이 price와 같거나 클 때)
+    // 판매자에게 가격의 99%를 전송
+    function sendToSeller(uint _indexOfProduct) public payable {
+    // 소수점 형태가 안되기 때문에 이렇게 1%를 만든다
+        uint _balance = (address(this).balance / 100) * 99;
+        productList[_indexOfProduct].sellerAddress.transfer(_balance);
+        productList[_indexOfProduct].sellingState = false;
+    }
+    
+    // 개발자에게 1%의 수수료를 주는 함수
+    function sendFeeToOwner() public payable {
+        owner.transfer( address(this).balance );
+    }
+    
+    // 상품 정보를 가져오는 함수(파라미터로 id[index]가 들어간다)
+    // view 함수는 gas fee를 소비하지 않는다
+    function getProduct(uint id) view public returns ( string, uint, uint, string, address, bool, string) {
+        return (productList[id].brandName,
+                productList[id].date,
+                productList[id].price,
+                productList[id].sellerPhone,
+                productList[id].sellerAddress,
+                productList[id].sellingState,
+                productList[id].image_hash);
+    }
+    
+    //상품리스트 배열의 길이를 반환하는 함수
+    function getProductLength() view public returns (uint) {
+        return productList.length;
+    }
+    
+    // 댑 개발자인지 확인하는 함수
+    function getOwner() view public returns (bool) {
+        return owner == msg.sender;
+    }
+    
+    // Dapp 파괴 함수
+    function dappDestroy() private onlyOwner {
+        selfdestruct(owner);
+    }
+}
